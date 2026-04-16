@@ -45,12 +45,21 @@ data class LinuxButtonLayout(
 
         /**
          * Reads the current system button layout (one-shot).
-         * Falls back to [Default] if GSettings is unavailable.
+         * Falls back to [Default] if not on GNOME, GSettings is unavailable,
+         * or returns no buttons.
          */
         fun readSystem(): LinuxButtonLayout =
             try {
+                if (!isGnomeDesktop()) {
+                    return Default
+                }
                 val raw = NativeLayoutDirectionBridge.nativeGetButtonLayout()
-                if (raw != null) parse(raw) else Default
+                if (raw != null) {
+                    val parsed = parse(raw)
+                    if (parsed.buttons.isNotEmpty()) parsed else Default
+                } else {
+                    Default
+                }
             } catch (_: UnsatisfiedLinkError) {
                 Default
             }
@@ -106,11 +115,23 @@ data class LinuxButtonLayout(
 }
 
 /**
+ * Returns true if the current desktop session is GNOME.
+ * Used to decide whether to read GNOME GSettings for button layout.
+ */
+private fun isGnomeDesktop(): Boolean {
+    val desktop = System.getenv("XDG_CURRENT_DESKTOP") ?: ""
+    val session = System.getenv("GNOME_DESKTOP_SESSION_ID")
+    return desktop.contains("gnome", ignoreCase = true) || session != null
+}
+
+/**
  * Singleton that starts the GSettings observer and keeps the button layout
  * up to date. Accessed from `WindowControlArea` to render the correct buttons.
+ * On non-GNOME desktops, the observer is not started and [Default] layout is used.
  */
 internal object LinuxButtonLayoutObserver {
     init {
+        if (!isGnomeDesktop()) return
         try {
             NativeLayoutDirectionBridge.nativeStartButtonLayoutObserving()
         } catch (_: UnsatisfiedLinkError) {
@@ -119,6 +140,7 @@ internal object LinuxButtonLayoutObserver {
     }
 
     fun registerListener(listener: Consumer<String>) {
+        if (!isGnomeDesktop()) return
         NativeLayoutDirectionBridge.registerButtonLayoutListener(listener)
     }
 
