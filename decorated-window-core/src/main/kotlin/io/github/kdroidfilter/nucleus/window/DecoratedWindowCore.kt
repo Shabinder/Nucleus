@@ -61,7 +61,9 @@ interface DecoratedWindowScope : FrameWindowScope {
     val state: DecoratedWindowState
 }
 
-object DecoratedWindowMeasurePolicy : MeasurePolicy {
+class DecoratedWindowMeasurePolicy(
+    private val contentBehindTitleBar: Boolean = false,
+) : MeasurePolicy {
     override fun MeasureScope.measure(
         measurables: List<Measurable>,
         constraints: Constraints,
@@ -85,20 +87,35 @@ object DecoratedWindowMeasurePolicy : MeasurePolicy {
         val titleBarBorderPlaceable = titleBarBorder?.measure(contentConstraints)
         val titleBarBorderHeight = titleBarBorderPlaceable?.height ?: 0
 
-        val measuredPlaceable = mutableListOf<Placeable>()
+        val chromeHeight = titleBarHeight + titleBarBorderHeight
 
+        // contentBehindTitleBar: content fills the whole window (placed at 0,0) and the title bar
+        // is drawn on top as an overlay, so the app paints edge-to-edge under the window controls
+        // (macOS apple.awt.fullWindowContent equivalent). The native Windows side already extends
+        // the client area into the title bar (WM_NCCALCSIZE + DwmExtendFrameIntoClientArea).
+        val childConstraints =
+            if (contentBehindTitleBar) {
+                contentConstraints
+            } else {
+                contentConstraints.offset(vertical = -chromeHeight)
+            }
+
+        val measuredPlaceable = mutableListOf<Placeable>()
         for (it in measurables) {
             if (it.layoutId.toString().startsWith(TITLE_BAR_COMPONENT_LAYOUT_ID_PREFIX)) continue
-            val offsetConstraints = contentConstraints.offset(vertical = -titleBarHeight - titleBarBorderHeight)
-            val placeable = it.measure(offsetConstraints)
-            measuredPlaceable += placeable
+            measuredPlaceable += it.measure(childConstraints)
         }
 
         return layout(constraints.maxWidth, constraints.maxHeight) {
-            titleBarPlaceable?.placeRelative(0, 0)
-            titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
-
-            measuredPlaceable.forEach { it.placeRelative(0, titleBarHeight + titleBarBorderHeight) }
+            if (contentBehindTitleBar) {
+                measuredPlaceable.forEach { it.placeRelative(0, 0) }
+                titleBarPlaceable?.placeRelative(0, 0)
+                titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
+            } else {
+                titleBarPlaceable?.placeRelative(0, 0)
+                titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
+                measuredPlaceable.forEach { it.placeRelative(0, chromeHeight) }
+            }
         }
     }
 }
@@ -184,6 +201,7 @@ fun FrameWindowScope.DecoratedWindowBody(
     icon: Painter?,
     undecorated: Boolean,
     onCloseRequest: () -> Unit = {},
+    contentBehindTitleBar: Boolean = false,
     content: @Composable DecoratedWindowScope.() -> Unit,
 ) {
     var decoratedWindowState by remember { mutableStateOf(DecoratedWindowState.of(window)) }
@@ -390,9 +408,12 @@ fun FrameWindowScope.DecoratedWindowBody(
     LaunchedEffect(title) { titleBarInfo.title = title }
     LaunchedEffect(icon) { titleBarInfo.icon = icon }
 
+    val measurePolicy = remember(contentBehindTitleBar) { DecoratedWindowMeasurePolicy(contentBehindTitleBar) }
+
     CompositionLocalProvider(
         LocalTitleBarInfo provides titleBarInfo,
         LocalLayoutDirection provides platformLayoutDirection,
+        LocalTitleBarBackgroundPainted provides !contentBehindTitleBar,
     ) {
         Layout(
             content = {
@@ -407,7 +428,7 @@ fun FrameWindowScope.DecoratedWindowBody(
                 scope.content()
             },
             modifier = Modifier.background(titleBarBackground).then(undecoratedWindowBorder),
-            measurePolicy = DecoratedWindowMeasurePolicy,
+            measurePolicy = measurePolicy,
         )
     }
 }

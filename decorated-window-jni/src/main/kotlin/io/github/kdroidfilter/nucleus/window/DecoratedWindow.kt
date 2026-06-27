@@ -86,6 +86,7 @@ fun DecoratedWindow(
     minimumSize: DpSize? = null,
     onPreviewKeyEvent: (KeyEvent) -> Boolean = { false },
     onKeyEvent: (KeyEvent) -> Boolean = { false },
+    contentBehindTitleBar: Boolean = false,
     content: @Composable DecoratedWindowScope.() -> Unit,
 ) {
     val undecorated =
@@ -216,6 +217,7 @@ fun DecoratedWindow(
                     icon = icon,
                     undecorated = undecorated,
                     onCloseRequest = onCloseRequest,
+                    contentBehindTitleBar = contentBehindTitleBar,
                     content = content,
                 )
 
