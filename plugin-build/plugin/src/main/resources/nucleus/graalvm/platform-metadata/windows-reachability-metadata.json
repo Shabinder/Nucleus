@@ -2046,6 +2046,49 @@
             ]
         },
         {
+            "type": "java.awt.DisplayMode",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "<init>",
+                    "parameterTypes": [
+                        "int",
+                        "int",
+                        "int",
+                        "int"
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "java.awt.geom.Point2D$Double",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "<init>",
+                    "parameterTypes": [
+                        "double",
+                        "double"
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "java.awt.geom.Rectangle2D$Double",
+            "jniAccessible": true,
+            "methods": [
+                {
+                    "name": "<init>",
+                    "parameterTypes": [
+                        "double",
+                        "double",
+                        "double",
+                        "double"
+                    ]
+                }
+            ]
+        },
+        {
             "type": "sun.awt.Win32GraphicsDevice",
             "jniAccessible": true,
             "fields": [
