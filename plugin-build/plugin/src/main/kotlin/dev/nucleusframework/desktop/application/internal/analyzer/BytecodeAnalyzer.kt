@@ -24,6 +24,16 @@ import java.util.jar.JarFile
  * runs [OrphanProjectClassDetector] — no second JAR pass (#441).
  */
 internal object BytecodeAnalyzer {
+    // Android/Dalvik types leak into JVM jars (sqlite-jdbc -> android.database.sqlite.*,
+    // OkHttp/coroutines -> android.util.*) via platform-detection code that never runs on
+    // desktop. Registering them as JNI entries makes native-image's JNIAccessFeature hard-fail
+    // with NoClassDefFoundError (e.g. android/util/Printer) because the class is absent from the
+    // desktop classpath. Unlike reflection entries, missing JNI types are fatal — so drop them.
+    private fun isUnresolvablePlatformType(typeName: String): Boolean =
+        typeName.startsWith("android.") ||
+            typeName.startsWith("dalvik.") ||
+            typeName.startsWith("com.android.")
+
     /**
      * Analyzes a single JAR file.
      */
@@ -250,6 +260,7 @@ internal object BytecodeAnalyzer {
         }
 
         for (refType in jniReferencedTypes) {
+            if (isUnresolvablePlatformType(refType)) continue
             if (jniEntries.none { it.type == refType }) {
                 jniEntries.add(JniEntry(type = refType))
             }
@@ -257,7 +268,7 @@ internal object BytecodeAnalyzer {
 
         return PartialScan(
             reflectionEntries = reflectionEntries,
-            jniEntries = jniEntries,
+            jniEntries = jniEntries.filterNot { isUnresolvablePlatformType(it.type) }.toMutableSet(),
             resourcePatterns = resourcePatterns,
             serviceLoaderEntries = serviceLoaderEntries,
             referencedTypes = referencedTypes,
@@ -350,6 +361,7 @@ internal object BytecodeAnalyzer {
         enrichJniClassEntries(classBytesIndex, jniEntries)
 
         for (refType in jniReferencedTypes) {
+            if (isUnresolvablePlatformType(refType)) continue
             if (jniEntries.none { it.type == refType }) {
                 jniEntries.add(JniEntry(type = refType))
             }
@@ -357,7 +369,7 @@ internal object BytecodeAnalyzer {
 
         return PartialScan(
             reflectionEntries = reflectionEntries,
-            jniEntries = jniEntries,
+            jniEntries = jniEntries.filterNot { isUnresolvablePlatformType(it.type) }.toMutableSet(),
             resourcePatterns = resourcePatterns,
             serviceLoaderEntries = serviceLoaderEntries,
             referencedTypes = referencedTypes,
@@ -384,6 +396,7 @@ internal object BytecodeAnalyzer {
 
         for (typeName in expandedCandidates) {
             if (typeName.startsWith("java.") || typeName.startsWith("javax.")) continue
+            if (isUnresolvablePlatformType(typeName)) continue
             if (jniEntries.any { it.type == typeName && it.methods.isNotEmpty() }) continue
 
             val internalName = typeName.replace('.', '/')
