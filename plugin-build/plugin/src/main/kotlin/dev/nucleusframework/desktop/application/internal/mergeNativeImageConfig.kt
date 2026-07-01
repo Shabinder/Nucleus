@@ -62,6 +62,28 @@ internal fun mergeReachabilityMetadata(
         mergeSimpleEntries(agentArray, targetArray)
     }
 
+    // FFM: "foreign" is an OBJECT { "downcalls": [...], "upcalls": [...], "directUpcalls": [...] },
+    // not a top-level array. Without merging it, agent-captured downcall/upcall descriptors are
+    // dropped and the native image fails at runtime with MissingForeignRegistrationError. Merge each
+    // inner array by JSON equality (order-independent, dedup identical descriptors).
+    (agentRoot["foreign"] as? Map<String, Any?>)?.let { agentForeign ->
+        @Suppress("UNCHECKED_CAST")
+        val targetForeign =
+            (targetRoot["foreign"] as? MutableMap<String, Any?>)
+                ?: mutableMapOf<String, Any?>().also { targetRoot["foreign"] = it }
+        for (kind in listOf("downcalls", "upcalls", "directUpcalls")) {
+            @Suppress("UNCHECKED_CAST")
+            val agentArray = agentForeign[kind] as? List<Map<String, Any?>> ?: continue
+
+            @Suppress("UNCHECKED_CAST")
+            val targetArray =
+                (targetForeign[kind] as? MutableList<Map<String, Any?>>)
+                    ?: mutableListOf<Map<String, Any?>>().also { targetForeign[kind] = it }
+
+            mergeSimpleEntries(agentArray, targetArray)
+        }
+    }
+
     targetDir.mkdirs()
     targetFile.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(targetRoot)) + "\n")
 }
