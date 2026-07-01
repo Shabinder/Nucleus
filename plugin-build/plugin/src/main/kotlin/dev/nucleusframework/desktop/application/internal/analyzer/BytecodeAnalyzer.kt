@@ -17,6 +17,16 @@ import java.util.jar.JarFile
  * Main entry point: scans one or more JARs and produces an [AnalysisResult].
  */
 internal object BytecodeAnalyzer {
+    // Android/Dalvik types leak into JVM jars (sqlite-jdbc -> android.database.sqlite.*,
+    // OkHttp/coroutines -> android.util.*) via platform-detection code that never runs on
+    // desktop. Registering them as JNI entries makes native-image's JNIAccessFeature hard-fail
+    // with NoClassDefFoundError (e.g. android/util/Printer) because the class is absent from the
+    // desktop classpath. Unlike reflection entries, missing JNI types are fatal — so drop them.
+    private fun isUnresolvablePlatformType(typeName: String): Boolean =
+        typeName.startsWith("android.") ||
+            typeName.startsWith("dalvik.") ||
+            typeName.startsWith("com.android.")
+
     /**
      * Analyzes a single JAR file.
      */
@@ -85,6 +95,7 @@ internal object BytecodeAnalyzer {
 
         // Add remaining JNI-referenced types that weren't resolved as callbacks
         for (refType in jniReferencedTypes) {
+            if (isUnresolvablePlatformType(refType)) continue
             if (jniEntries.none { it.type == refType }) {
                 jniEntries.add(JniEntry(type = refType))
             }
@@ -92,7 +103,7 @@ internal object BytecodeAnalyzer {
 
         return AnalysisResult(
             reflectionEntries = reflectionEntries,
-            jniEntries = jniEntries,
+            jniEntries = jniEntries.filterNot { isUnresolvablePlatformType(it.type) }.toMutableSet(),
             resourcePatterns = resourcePatterns,
             serviceLoaderEntries = serviceLoaderEntries,
         )
@@ -171,6 +182,7 @@ internal object BytecodeAnalyzer {
         enrichJniClassEntries(classBytesIndex, jniEntries)
 
         for (refType in jniReferencedTypes) {
+            if (isUnresolvablePlatformType(refType)) continue
             if (jniEntries.none { it.type == refType }) {
                 jniEntries.add(JniEntry(type = refType))
             }
@@ -178,7 +190,7 @@ internal object BytecodeAnalyzer {
 
         return AnalysisResult(
             reflectionEntries = reflectionEntries,
-            jniEntries = jniEntries,
+            jniEntries = jniEntries.filterNot { isUnresolvablePlatformType(it.type) }.toMutableSet(),
             resourcePatterns = resourcePatterns,
             serviceLoaderEntries = serviceLoaderEntries,
         )
@@ -237,6 +249,7 @@ internal object BytecodeAnalyzer {
         for (typeName in expandedCandidates) {
             // Skip JDK types and types already fully covered
             if (typeName.startsWith("java.") || typeName.startsWith("javax.")) continue
+            if (isUnresolvablePlatformType(typeName)) continue
             if (jniEntries.any { it.type == typeName && it.methods.isNotEmpty() }) continue
 
             // Look up the class bytes by internal name (com/foo/Bar)
