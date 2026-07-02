@@ -12,6 +12,7 @@ import io.github.kdroidfilter.nucleus.desktop.application.tasks.AbstractElectron
 import io.github.kdroidfilter.nucleus.desktop.application.tasks.AbstractNotarizationTask
 import io.github.kdroidfilter.nucleus.desktop.tasks.AbstractUnpackDefaultApplicationResourcesTask
 import io.github.kdroidfilter.nucleus.internal.utils.Arch
+import io.github.kdroidfilter.nucleus.internal.utils.jdkArch
 import io.github.kdroidfilter.nucleus.internal.utils.OS
 import io.github.kdroidfilter.nucleus.internal.utils.currentArch
 import io.github.kdroidfilter.nucleus.internal.utils.currentOS
@@ -200,6 +201,16 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
                     ?.asFile
             val stubOutFile: File = appTmpDir.get().asFile.resolve("graalvm/cursor_stub.o")
             val stubCFile: File = appTmpDir.get().asFile.resolve("graalvm/cursor_stub.c")
+            // clang defaults to the build HOST arch. The native image's arch is the NIK's arch
+            // (native-image is a separate process = the toolchain binary), NOT the Gradle daemon's
+            // os.arch. Under Rosetta (x86_64 NIK, arm64 daemon) currentArch would be arm64 and emit
+            // an arm64 stub the x86_64 link rejects ("found architecture 'arm64', required
+            // architecture 'x86_64'"). Read the arch from the NIK's `release` OS_ARCH so the stub
+            // always matches the linked image, independent of which JVM runs Gradle.
+            val stubClangArch: String = when (jdkArch(File(graalvmHome.get()))) {
+                Arch.X64 -> "x86_64"
+                Arch.Arm64 -> "arm64"
+            }
 
             tasks.register<DefaultTask>(
                 taskNameAction = "compile",
@@ -211,6 +222,9 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
                 if (resolvedStubSrc != null) {
                     inputs.file(resolvedStubSrc)
                 }
+                // Track the target arch as an input so switching NIK (e.g. arm64 -> x86_64) re-runs
+                // the compile instead of reusing a cached stub of the wrong architecture.
+                inputs.property("stubClangArch", stubClangArch)
 
                 doLast {
                     val srcFile =
@@ -230,7 +244,7 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
 
                     stubOutFile.parentFile.mkdirs()
                     val process =
-                        ProcessBuilder("clang", "-c", srcFile.absolutePath, "-o", stubOutFile.absolutePath)
+                        ProcessBuilder("clang", "-arch", stubClangArch, "-c", srcFile.absolutePath, "-o", stubOutFile.absolutePath)
                             .inheritIO()
                             .start()
                     check(process.waitFor() == 0) { "clang failed compiling $srcFile" }
