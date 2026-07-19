@@ -84,6 +84,7 @@ public fun DecoratedWindow(
     focusable: Boolean = true,
     alwaysOnTop: Boolean = false,
     minimumSize: DpSize? = null,
+    contentBehindTitleBar: Boolean = false,
     onPreviewKeyEvent: (KeyEvent) -> Boolean = { false },
     onKeyEvent: (KeyEvent) -> Boolean = { false },
     content: @Composable AwtDecoratedWindowScope.() -> Unit,
@@ -215,6 +216,7 @@ public fun DecoratedWindow(
                     title = title,
                     icon = icon,
                     undecorated = undecorated,
+                    contentBehindTitleBar = contentBehindTitleBar,
                     onCloseRequest = onCloseRequest,
                     content = content,
                 )

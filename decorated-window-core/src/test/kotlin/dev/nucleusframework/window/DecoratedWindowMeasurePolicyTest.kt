@@ -36,7 +36,7 @@ class DecoratedWindowMeasurePolicyTest {
                                 height = it.size.height
                             },
                     content = {},
-                    measurePolicy = DecoratedWindowMeasurePolicy,
+                    measurePolicy = DecoratedWindowMeasurePolicy(),
                 )
             }
             waitForIdle()
@@ -97,6 +97,6 @@ private fun MeasuredWindow(
                     .onGloballyPositioned(onContent),
             )
         },
-        measurePolicy = DecoratedWindowMeasurePolicy,
+        measurePolicy = DecoratedWindowMeasurePolicy(),
     )
 }

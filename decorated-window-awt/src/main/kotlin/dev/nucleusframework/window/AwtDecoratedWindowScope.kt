@@ -69,6 +69,7 @@ public fun FrameWindowScope.DecoratedWindowBody(
     title: String,
     icon: Painter?,
     undecorated: Boolean,
+    contentBehindTitleBar: Boolean = false,
     onCloseRequest: () -> Unit = {},
     content: @Composable AwtDecoratedWindowScope.() -> Unit,
 ) {
@@ -266,9 +267,13 @@ public fun FrameWindowScope.DecoratedWindowBody(
     LaunchedEffect(title) { titleBarInfo.title = title }
     LaunchedEffect(icon) { titleBarInfo.icon = icon }
 
+    val measurePolicy = remember(contentBehindTitleBar) { DecoratedWindowMeasurePolicy(contentBehindTitleBar) }
+
     CompositionLocalProvider(
         LocalTitleBarInfo provides titleBarInfo,
         LocalLayoutDirection provides platformLayoutDirection,
+        // Immersive mode: suppress the title bar's own background so app content underneath shows through.
+        LocalTitleBarBackgroundPainted provides !contentBehindTitleBar,
     ) {
         Layout(
             content = {
@@ -283,7 +288,7 @@ public fun FrameWindowScope.DecoratedWindowBody(
                 scope.content()
             },
             modifier = Modifier.background(titleBarBackground).then(undecoratedWindowBorder),
-            measurePolicy = DecoratedWindowMeasurePolicy,
+            measurePolicy = measurePolicy,
         )
     }
 }

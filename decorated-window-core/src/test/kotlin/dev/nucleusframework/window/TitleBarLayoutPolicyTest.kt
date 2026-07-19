@@ -309,7 +309,7 @@ class TitleBarLayoutPolicyTest {
                             Box(Modifier.layoutId(TITLE_BAR_LAYOUT_ID).size(10.dp))
                             Box(Modifier.layoutId(TITLE_BAR_LAYOUT_ID).size(10.dp))
                         },
-                        measurePolicy = DecoratedWindowMeasurePolicy,
+                        measurePolicy = DecoratedWindowMeasurePolicy(),
                     )
                 }
                 waitForIdle()
@@ -348,7 +348,7 @@ class TitleBarLayoutPolicyTest {
                                     .onGloballyPositioned { contentY = it.positionInParent().y },
                             )
                         },
-                        measurePolicy = DecoratedWindowMeasurePolicy,
+                        measurePolicy = DecoratedWindowMeasurePolicy(),
                     )
                 }
             }
@@ -366,7 +366,7 @@ class TitleBarLayoutPolicyTest {
                 Box(Modifier.size(16.dp).onSizeChanged { size = it }) {
                     androidx.compose.ui.layout.Layout(
                         content = {},
-                        measurePolicy = DecoratedWindowMeasurePolicy,
+                        measurePolicy = DecoratedWindowMeasurePolicy(),
                     )
                 }
             }
