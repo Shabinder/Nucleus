@@ -34,7 +34,9 @@ interface DecoratedWindowScope {
     val state: DecoratedWindowState
 }
 
-object DecoratedWindowMeasurePolicy : MeasurePolicy {
+class DecoratedWindowMeasurePolicy(
+    private val contentBehindTitleBar: Boolean = false,
+) : MeasurePolicy {
     override fun MeasureScope.measure(
         measurables: List<Measurable>,
         constraints: Constraints,
@@ -58,20 +60,34 @@ object DecoratedWindowMeasurePolicy : MeasurePolicy {
         val titleBarBorderPlaceable = titleBarBorder?.measure(contentConstraints)
         val titleBarBorderHeight = titleBarBorderPlaceable?.height ?: 0
 
+        val chromeHeight = titleBarHeight + titleBarBorderHeight
+        // contentBehindTitleBar: content fills the whole window (placed at 0,0) and the title bar draws
+        // on top as an overlay, so the app paints edge-to-edge under the window controls (macOS
+        // apple.awt.fullWindowContent equivalent). Otherwise content is offset below the chrome.
+        val childConstraints =
+            if (contentBehindTitleBar) {
+                contentConstraints
+            } else {
+                contentConstraints.offset(vertical = -chromeHeight)
+            }
+
         val measuredPlaceable = mutableListOf<Placeable>()
 
         for (it in measurables) {
             if (it.layoutId.toString().startsWith(TITLE_BAR_COMPONENT_LAYOUT_ID_PREFIX)) continue
-            val offsetConstraints = contentConstraints.offset(vertical = -titleBarHeight - titleBarBorderHeight)
-            val placeable = it.measure(offsetConstraints)
-            measuredPlaceable += placeable
+            measuredPlaceable += it.measure(childConstraints)
         }
 
         return layout(constraints.maxWidth, constraints.maxHeight) {
-            titleBarPlaceable?.placeRelative(0, 0)
-            titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
-
-            measuredPlaceable.forEach { it.placeRelative(0, titleBarHeight + titleBarBorderHeight) }
+            if (contentBehindTitleBar) {
+                measuredPlaceable.forEach { it.placeRelative(0, 0) }
+                titleBarPlaceable?.placeRelative(0, 0)
+                titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
+            } else {
+                titleBarPlaceable?.placeRelative(0, 0)
+                titleBarBorderPlaceable?.placeRelative(0, titleBarHeight)
+                measuredPlaceable.forEach { it.placeRelative(0, chromeHeight) }
+            }
         }
     }
 }

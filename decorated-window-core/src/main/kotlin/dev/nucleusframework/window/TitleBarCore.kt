@@ -53,6 +53,10 @@ val LocalContentColor = staticCompositionLocalOf { Color.Black }
  */
 val LocalControlButtonsDirection = staticCompositionLocalOf { LayoutDirection.Ltr }
 
+// When false (content-behind-titlebar / immersive mode) the title bar skips painting its own
+// background so the app content placed underneath shows through edge-to-edge.
+val LocalTitleBarBackgroundPainted = staticCompositionLocalOf { true }
+
 @Suppress("FunctionNaming", "LongParameterList")
 @Composable
 fun GenericTitleBarImpl(
@@ -69,6 +73,8 @@ fun GenericTitleBarImpl(
     content: @Composable TitleBarScope.(DecoratedWindowState) -> Unit,
 ) {
     val titleBarInfo = LocalTitleBarInfo.current
+
+    val paintBackground = LocalTitleBarBackgroundPainted.current
 
     val background by style.colors.backgroundFor(state)
 
@@ -94,7 +100,7 @@ fun GenericTitleBarImpl(
     Box(
         modifier =
             modifier
-                .background(backgroundBrush)
+                .then(if (paintBackground) Modifier.background(backgroundBrush) else Modifier)
                 .then(
                     // Block focus on Windows/Linux so Tab navigation cannot enter the Compose-driven
                     // title bar drag area. On macOS the traffic-light buttons are native (outside the
