@@ -21,6 +21,7 @@ import dev.nucleusframework.internal.utils.currentArch
 import dev.nucleusframework.internal.utils.currentOS
 import dev.nucleusframework.internal.utils.executableName
 import dev.nucleusframework.internal.utils.javaExecutable
+import dev.nucleusframework.internal.utils.jdkArch
 import dev.nucleusframework.internal.utils.uppercaseFirstChar
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
@@ -380,6 +381,16 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
                     ?.asFile
             val stubOutFile: File = appTmpDir.get().asFile.resolve("graalvm/cursor_stub.o")
             val stubCFile: File = appTmpDir.get().asFile.resolve("graalvm/cursor_stub.c")
+            // The stub .o is linked INTO the native image, so its arch must match the NIK (native-image
+            // is a separate process = the toolchain's arch), NOT the Gradle daemon's os.arch. Under
+            // Rosetta (x86_64 NIK, arm64 daemon) a default `clang` emits an arm64 stub the x86_64 link
+            // rejects ("found architecture 'arm64', required 'x86_64'"). Read the arch from the NIK's
+            // release file so the stub always matches the linked image. Resolved at configuration time.
+            val stubClangArch: String =
+                when (jdkArch(File(graalvmHome.get()))) {
+                    Arch.X64 -> "x86_64"
+                    Arch.Arm64 -> "arm64"
+                }
 
             tasks.register<DefaultTask>(
                 taskNameAction = "compile",
@@ -388,6 +399,9 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
                 description = "Compile C stubs for symbols referenced by AWT flat-namespace dylibs"
 
                 outputs.file(stubOutFile)
+                // Track the target arch as an input so switching NIK (arm64 <-> x86_64) recompiles the
+                // stub instead of reusing a cached .o of the wrong architecture.
+                inputs.property("stubClangArch", stubClangArch)
                 if (resolvedStubSrc != null) {
                     inputs.file(resolvedStubSrc)
                 }
@@ -430,7 +444,7 @@ internal fun JvmApplicationContext.configureGraalvmApplication() {
 
                     stubOutFile.parentFile.mkdirs()
                     val process =
-                        ProcessBuilder("clang", "-c", srcFile.absolutePath, "-o", stubOutFile.absolutePath)
+                        ProcessBuilder("clang", "-arch", stubClangArch, "-c", srcFile.absolutePath, "-o", stubOutFile.absolutePath)
                             .inheritIO()
                             .start()
                     check(process.waitFor() == 0) { "clang failed compiling $srcFile" }
