@@ -7,6 +7,11 @@
         {
             "type": "com.sun.media.sound.PortMixerProvider",
             "methods": [ { "name": "<init>", "parameterTypes": [] } ]
+        },
+        {
+            "type": "dev.nucleusframework.graalvm.GraalVmInitializer",
+            "fields": [ { "name": "INSTANCE" } ],
+            "methods": [ { "name": "initialize", "parameterTypes": [] } ]
         }
     ],
     "resources": [

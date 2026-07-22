@@ -1268,6 +1268,36 @@ private fun JvmApplicationContext.configureMacOsGraalvmPackaging(
             into(appBundleDir.map { it.dir("MacOS/lib") })
         }
 
+    // Copy the app's platform-specific resources tree (e.g. bundled libvlc, ffmpeg, plugins) into
+    // the .app so it is discoverable regardless of how the app is launched. The JVM path
+    // (configureJvmApplication.kt:227-240) has always staged these into the jpackage runtime;
+    // the native-image path did not, which caused apps that read
+    // `compose.application.resources.dir/<os-arch>/…` at runtime to fail under LaunchServices
+    // (`open -a`, auto-open-at-login, deep-link handoff) where cwd=`/` and the sys-property is
+    // unset. Preserve the `<os-arch>/` nesting (`Contents/Resources/macos-arm64/lib/`) so
+    // consumers that walk from the running binary's parent hit the same layout they see under
+    // `./desktop/resources/` in dev.
+    val copyAppResources =
+        tasks.register<Copy>(
+            taskNameAction = "copy",
+            taskNameObject = "graalvmAppResources",
+        ) {
+            val osArchId = "${currentOS.id}-${currentArch.id}"
+            description = "Copy appResourcesRootDir/{common,${currentOS.id},$osArchId}/** into .app/Contents/Resources"
+            dependsOn(cleanAppBundle)
+            doNotTrackState("Output directory is modified by downstream patch/strip/codesign tasks")
+            val appResourcesRootDir = app.nativeDistributions.appResourcesRootDir
+            onlyIf { appResourcesRootDir.isPresent }
+            if (appResourcesRootDir.isPresent) {
+                from(appResourcesRootDir) {
+                    include("common/**")
+                    include("${currentOS.id}/**")
+                    include("$osArchId/**")
+                }
+            }
+            into(appBundleDir.map { it.dir("Resources") })
+        }
+
     val stripDylibs =
         tasks.register<DefaultTask>(
             taskNameAction = "strip",
@@ -1313,7 +1343,7 @@ private fun JvmApplicationContext.configureMacOsGraalvmPackaging(
             taskNameObject = "graalvmBuildVersion",
         ) {
             description = "Patch LC_BUILD_VERSION on native binary and dylibs via vtool"
-            dependsOn(copyBinary, stripDylibs, copyJawtToLib, copySkikoLib)
+            dependsOn(copyBinary, stripDylibs, copyJawtToLib, copySkikoLib, copyAppResources)
 
             inputs.property("minVersion", patchMinVersion)
             inputs.property("sdkVersion", patchSdkVersion)
