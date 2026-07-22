@@ -1805,6 +1805,11 @@ private fun JvmApplicationContext.configureWindowsGraalvmPackaging(
             null
         }
 
+    val upxBinary = registerGraalvmUpxTask(
+        stripBinary = copyBinary,
+        binaryProvider = outputDir.map { it.file("${imageName.get()}.exe") },
+    )
+
     return tasks.register<DefaultTask>(
         taskNameAction = "package",
         taskNameObject = "graalvmNative",
@@ -1812,6 +1817,7 @@ private fun JvmApplicationContext.configureWindowsGraalvmPackaging(
         description = "Build native image and package with DLLs"
         dependsOn(copyBinary, copyAwtDlls, copyJvmDll, copyJawtToBin, copySkikoLib, copyFontConfig)
         copyCRuntime?.let { dependsOn(it) }
+        upxBinary?.let { dependsOn(it) }
     }
 }
 
@@ -1963,12 +1969,56 @@ private fun JvmApplicationContext.configureLinuxGraalvmPackaging(
             commandLine("strip", binary.get().asFile.absolutePath)
         }
 
+    // Optional UPX compression on Linux (opt-in via -Pnucleus.graalvm.upx=true). UPX losslessly
+    // shrinks the ELF binary (measured: 179 MB → 62 MB on SoundBound at level -9). Cost is one-off
+    // decompress on cold start (~50-150 ms). Skipped gracefully if `upx` is not on PATH.
+    val upxBinary = registerGraalvmUpxTask(stripBinary, outputDir.map { it.file(imageName.get()) })
+
     return tasks.register<DefaultTask>(
         taskNameAction = "package",
         taskNameObject = "graalvmNative",
     ) {
         description = "Build native image and package with .so libs"
         dependsOn(copyBinary, copyAwtSoLibs, copyJvmSo, copyJawtToLib, copySkikoLib, fixRpath, fixSoRpath, stripSoLibs, stripBinary)
+        upxBinary?.let { dependsOn(it) }
+    }
+}
+
+// UPX task shared by Linux and Windows Graalvm packaging paths. macOS Sonoma+ hardened runtime
+// kernel-kills UPX-modified Mach-O binaries even after re-codesign (POSIX 153 launchd spawn
+// failure), so this task is intentionally NOT wired from the macOS path — attempting UPX on
+// macOS is a footgun. Opt-in via `-Pnucleus.graalvm.upx=true` on the invoking build. Skipped
+// with a lifecycle warning if `upx` is not on PATH (returns null → caller must null-check).
+private fun JvmApplicationContext.registerGraalvmUpxTask(
+    stripBinary: TaskProvider<*>,
+    binaryProvider: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+): TaskProvider<Exec>? {
+    val upxEnabled = project.providers.gradleProperty("nucleus.graalvm.upx")
+        .map { it == "true" || it == "1" }
+        .orElse(false)
+    if (!upxEnabled.get()) return null
+
+    val upxOnPath = runCatching {
+        ProcessBuilder("upx", "--version").redirectErrorStream(true).start().waitFor() == 0
+    }.getOrDefault(false)
+    if (!upxOnPath) {
+        project.logger.lifecycle(
+            "[graalvm.upx] -Pnucleus.graalvm.upx=true set but `upx` is not on PATH; skipping compression",
+        )
+        return null
+    }
+
+    return tasks.register<Exec>(
+        taskNameAction = "upx",
+        taskNameObject = "graalvmBinary",
+    ) {
+        description = "Compress the native image binary with UPX (Linux/Windows only)"
+        dependsOn(stripBinary)
+        val binaryFile = binaryProvider.get().asFile
+        // --best (level -9) gives the best size at ~50s compress time on ~180 MB binary. --lzma
+        // is even smaller but incompatible with several Linux distros' seccomp policies and adds
+        // a ~50 ms decompression tax without meaningfully improving over --best.
+        commandLine("upx", "--best", "--no-progress", binaryFile.absolutePath)
     }
 }
 
