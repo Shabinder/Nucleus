@@ -1539,10 +1539,15 @@ private fun JvmApplicationContext.configureMacOsGraalvmPackaging(
     // unset. Preserve the `<os-arch>/` nesting (`Contents/Resources/macos-arm64/lib/`) so
     // consumers that walk from the running binary's parent hit the same layout they see under
     // `./desktop/resources/` in dev.
-    val copyAppResources =
+    // NOTE: upstream also registers a `copyAppResources` further down that copies the whole
+    // appResourcesRootDir into .app/Contents/MacOS. This task is NOT a duplicate of it: it lays
+    // out {common,<os>,<os>-<arch>} under .app/Contents/Resources, which is where BundledVlc
+    // looks (Contents/Resources/<os>-<arch>/lib). Different destination, different consumer --
+    // hence the distinct name after the v2.5.12 rebase.
+    val copyAppResourcesToResourcesDir =
         tasks.register<Copy>(
             taskNameAction = "copy",
-            taskNameObject = "graalvmAppResources",
+            taskNameObject = "graalvmAppResourcesToResources",
         ) {
             val osArchId = "${currentOS.id}-${currentArch.id}"
             description = "Copy appResourcesRootDir/{common,${currentOS.id},$osArchId}/** into .app/Contents/Resources"
@@ -1605,7 +1610,7 @@ private fun JvmApplicationContext.configureMacOsGraalvmPackaging(
             taskNameObject = "graalvmBuildVersion",
         ) {
             description = "Patch LC_BUILD_VERSION on native binary and dylibs via vtool"
-            dependsOn(copyBinary, stripDylibs, copyJawtToLib, copySkikoLib, copyAppResources)
+            dependsOn(copyBinary, stripDylibs, copyJawtToLib, copySkikoLib, copyAppResourcesToResourcesDir)
 
             inputs.property("minVersion", patchMinVersion)
             inputs.property("sdkVersion", patchSdkVersion)
