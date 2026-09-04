@@ -58,7 +58,8 @@ public val LocalControlButtonsDirection: ProvidableCompositionLocal<LayoutDirect
 
 // When false (content-behind-titlebar / immersive mode) the title bar skips painting its own
 // background so the app content placed underneath shows through edge-to-edge.
-val LocalTitleBarBackgroundPainted = staticCompositionLocalOf { true }
+public val LocalTitleBarBackgroundPainted: ProvidableCompositionLocal<Boolean> =
+    staticCompositionLocalOf { true }
 
 @Suppress("FunctionNaming", "LongParameterList")
 @Composable
