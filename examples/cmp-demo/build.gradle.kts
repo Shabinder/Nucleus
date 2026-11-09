@@ -49,6 +49,12 @@ kotlin {
 }
 
 android {
+    // AGP 9.5 creates a Compose Preview task per variant and fails IDE sync unless unit tests
+    // get compiled Android resources.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     namespace = "com.example.samplecmp"
     compileSdk = 37
     defaultConfig {
